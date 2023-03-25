@@ -1,0 +1,181 @@
+#this will be the preparation of the preimputation dataset and hopefully the imputation as well
+#you need to convert the type in to numeric and character for character variables or exclude them since we know that they are all present
+#use kirkegaards package to calculate the missingness type etc and can reference that book
+#think of potentially using some visualisations or maybe just use visualisations to compare median vs 0 subsition vs mimputation on its effect on the dataset
+
+#Juwas paper has a good definition of MAR which you should use to justify your work using the miss_analyze matrix and the fact that there are so many variables included in your dataset that include reporting standards time etc they should be enough to explain why the data is missing thus it is not MNAR, anything else missing would then be MCAR
+
+```{r}
+#nope just use wide5 , it is obtained by removing variables with more than 1000 cases and some that were deemed unimportant, repetetive, some accumulated, some growth rates, and some that are derivatives of the exisiting variables
+
+#wide5 is just removing the 14 firms with the most missing data you can show this by using that graph and you can probably do the same for variables
+
+rm(list = ls())
+load("~/Thesis R/Data after removing before imp.RData")
+imp1 = wide5
+```
+
+#CLASS CONVERSIONS
+#first step is to convert the classes into numeric and factors accordingly
+#ticker is an id, cr is an ordinal variable, sector is also an id or grouping variable and the ifrs variable is a binary, time is a time variable
+#time and sector can probably be left as numeric
+#ifrs - logical
+```{r}
+imp1$`IFRS 16 ASC 842 Adoption and Disclosure Indicator`= as.numeric(as.factor(imp1$`IFRS 16 ASC 842 Adoption and Disclosure Indicator`))
+#Converting ifrs into 1 and 2, 1 is no and 2 is yes
+
+imp1$Ticker = as.numeric(as.factor(imp1$`Ticker`))
+
+x = as.data.frame(table(imp1$CR))
+#converting the credit ratings into an ordered scale 
+#this will remain the format throughout
+imp1$CR[imp1$CR == "AAA"] = 1
+imp1$CR[imp1$CR == "AAP"] = 2
+imp1$CR[imp1$CR == "AA"] = 3
+imp1$CR[imp1$CR == "AAN"] = 4
+imp1$CR[imp1$CR == "AP"] = 5
+imp1$CR[imp1$CR == "A"] = 6
+imp1$CR[imp1$CR == "AN"] = 7
+imp1$CR[imp1$CR == "BBBP"] = 8
+imp1$CR[imp1$CR == "BBB"] = 9
+imp1$CR[imp1$CR == "BBBN"] = 10
+imp1$CR[imp1$CR == "BBP"] = 11
+imp1$CR[imp1$CR == "BB"] = 12
+imp1$CR[imp1$CR == "BBN"] = 13
+imp1$CR[imp1$CR == "BP"] = 14
+imp1$CR[imp1$CR == "B"] = 15
+imp1$CR[imp1$CR == "BN"] = 16
+imp1$CR[imp1$CR == "CCCP"] = 17
+
+#make sure numeric comes first and then make it factor otherwise it messes up the arangement of things
+imp1$CR = as.factor(as.numeric((imp1$CR)))
+
+# to correct for this i just manually did it but if the code is run again it will work just fine (corrected in imputed data in file imp2)
+
+histogram(as.numeric(imp1$CR))
+#consider plotting a normal curve on top of this just to see if the distribution actually follows a normal distribution
+
+imp1 = as.data.frame(apply(imp1, 2, as.numeric))
+sapply(imp1, class)  
+```
+
+#this is where you begin applying kirkegaards stuff
+```{r}
+library(kirkegaard)
+
+mpattern = as.data.frame(table(miss_pattern(imp1)))
+miss_complexity(imp1)
+
+mtype = miss_analyze(imp1)
+
+mtype2 = as.data.frame(mtype)
+colnames(mtype2) = colnames(imp1)
+rownames(mtype2) = colnames(imp1)
+#from this dataset you wll drop majority of the variables on the row side and keep only the ones with a really high missing rate (do edasummary on imp1) keep only the variables above a certain missing percentage say 2%?
+
+tmp = eda_summary(imp1)
+```
+
+```{r}
+save(imp1, mtype, mtype2, file = "preimpute1.RData")
+```
+
+#MICE imputation
+
+#should check if your data is mutlivariate normal potentially with a log transform, if it is then you can use other techniques eg Joint modelling to impute data
+```{r}
+library(mvnTest)
+library(dplyr)
+imp_med = sample_n(imp1,2000)
+
+#taking no missing data and deselcting no predictor variables
+R.test(imp_med[complete.cases(imp_med), -c(1,2,21)])
+
+```
+
+```{r}
+library(mice)
+
+colnames(imp1)= make.names(colnames(imp1))
+imp_small = sample_n(imp1,500)
+
+
+methods(mice)
+
+#https://www.researchgate.net/publication/317901660_A_Comparison_of_Multiple_Imputation_Methods_for_Data_with_Missing_Values
+#https://dc.etsu.edu/cgi/viewcontent.cgi?article=5014&context=etd
+#this papers show that cart and pmm have very similar performnace are scalable etc
+#combine this with out hypothesis question and the fact that financial data will inevitably be linear combinations of each other i have no choice but to use cart in stead of pmm
+#you should remove the variables that are not truly continuous - sector, time, ticker, ifrs, cr (or you could leave them in because sector will predict what variables may or may not be missing)
+
+#testing mice with only missing variable columns for pmm - does not work
+ 
+library(mice)
+
+```
+#dataset with median imputation as well as zero imputation #redo this
+```{r}
+impmed= as.data.frame(sapply(imp1,function(x) {
+  if(is.numeric(x)) ifelse(is.na(x),median(x,na.rm=T),x) else x}))
+
+imp0 = imp1
+imp0[is.na(imp0)]= 0
+```
+
+#identifying colinear variables in the orignal datatset
+```{r}
+load("~/thesisnadata.RData")
+rm(longdata)
+colnames(widedata)= make.names(colnames(widedata))
+widedata$IFRS.16.ASC.842.Adoption.and.Disclosure.Indicator = as.numeric(as.factor(widedata$IFRS.16.ASC.842.Adoption.and.Disclosure.Indicator))
+widedata$Ticker = as.numeric(as.factor(widedata$Ticker))
+widedata2 =widedata[, -38]
+
+widedata2= as.data.frame(apply(widedata2, 2, as.numeric)) 
+imp_init = mice(widedata2,m=1,maxit=1, method ="cart",seed=14)
+```
+
+```{r}
+gc()
+library(mice)
+imp_mice = mice(imp1,m=10,maxit=10, method ="cart",seed=14, remove.collinear = F)
+
+save(imp_mice, file = "impmice.RData")
+```
+
+#this section has the imputed datasets from mice
+#amelia?
+```{r}
+imp2 = complete(imp_mice)
+imp2sum = miss_summary(imp2)
+
+#explain convergance etc
+plot(imp_mice)
+```
+
+
+```{r}
+#load function first
+preimp = sum_stats(imp1)
+
+#idea here is to take the difference between all values in the dataset as a percentage of their initial value ie we looking for percentage change and then rank by the highest
+
+tmp = round((((postimp - preimp)/preimp)*100), 4) #looks messed up as fuck
+#use mnar argument justify with convergence plot
+#try amelia next
+
+#describe the nature and type of variables
+#show if time series assumptions are met
+#show missingness all that nonesense
+#neaten up everything
+#doing more iterations with mids
+#shift over to a new notebook here
+
+save(imp2, impmed, imp0, file = "imputed.RData")
+save(imp2, file = "corrected data after imp.RData")
+```
+
+
+
+
+

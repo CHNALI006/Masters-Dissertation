@@ -1,0 +1,96 @@
+```{r}
+load("~/Thesis R/corrected data after imp.RData")
+```
+
+#using chun huang who uses a division to make balance classes
+#https://www.sciencedirect.com/science/article/pii/S0927539809000589
+```{r}
+#get cumulative sums of each credit rating to see how to divide
+crsplit = as.data.frame(table(creditr$CR))
+crcumsum = crsplit
+
+crletters = c("AAA","AA+","AA", "AA-", "A+", "A", "A-", "BBB+", "BBB", "BBB-", "BB+", "BB", "BB-", "B+", "B", "B-", "CCC+")
+
+crcumsum[,2] = cumsum(crcumsum[,2])
+crcumsum[,2] = (crcumsum[,2])/50.8
+crstats = cbind(crcumsum,((crsplit[,2])/50.8), crletters)
+```
+
+#following the article and wikipedia roughly to split the classes to resemble somehwat the short term ratings we can divide the classes as follow
+```{r}
+#AAA to A is class 1 ~ 28%
+#A- and BBB+ is class 2 ~ 34%
+#BBB and BBB- is class 3 ~ 21%
+#BB+ and below is class 4 ~ 17%
+
+creditr2 = creditr
+#run in this order
+#creditr2$CR[creditr2$CR == 1] = 
+creditr2$CR[creditr2$CR == 2] = 1
+creditr2$CR[creditr2$CR == 3] = 1
+creditr2$CR[creditr2$CR == 4] = 1
+creditr2$CR[creditr2$CR == 5] = 1
+creditr2$CR[creditr2$CR == 6] = 1
+#check
+table(creditr2$CR)/50.8
+  
+creditr2$CR[creditr2$CR == 7] = 2
+creditr2$CR[creditr2$CR == 8] = 2
+#check
+table(creditr2$CR)/50.8
+
+creditr2$CR[creditr2$CR == 9] = 3
+creditr2$CR[creditr2$CR == 10] = 3  
+#check
+table(creditr2$CR)/50.8
+
+creditr2$CR[creditr2$CR == 11] = 4
+creditr2$CR[creditr2$CR == 12] = 4  
+creditr2$CR[creditr2$CR == 13] = 4
+creditr2$CR[creditr2$CR == 14] = 4  
+creditr2$CR[creditr2$CR == 15] = 4
+creditr2$CR[creditr2$CR == 16] = 4  
+creditr2$CR[creditr2$CR == 17] = 4  
+#check
+table(creditr2$CR)/50.8
+
+creditr2$CR= droplevels(creditr2$CR)
+#check
+table(creditr2$CR)/50.8
+```
+
+#check time distribution
+```{r}
+crtime = creditr2[order(creditr2$Time),]
+crtimeplot = (crtime$CR)
+plot(1016:1270, crtimeplot[1016:1270], type = "l")
+#looks good and fairly evenly distributed
+
+save(creditr2, file = "reduced classes after correction.RData")
+```
+
+
+#creat the time ordered data and train test split
+```{r}
+creditr3 = creditr2
+creditr3 = creditr3[order(creditr3$Time),]
+rownames(creditr3) = NULL
+class(creditr3$Ticker)
+#to see numbers that will help in for loop use creditr3 and sort by ticker and look at the row numbers
+
+creditr3cr = as.data.frame(creditr3$CR)
+colnames(creditr3cr) = "CR"
+creditr3all = creditr3[,-21]
+
+creditr4 = as.data.frame(cbind(creditr3cr,creditr3all))
+#train and test split
+#each time period is 127 rows
+#1 to 36 is 1:4445
+
+train = creditr4[1:4572,]
+test = creditr4[4573:5080,]
+
+save(train, test, file = "train and test data.RData")
+```
+
+
